@@ -29,7 +29,8 @@ module Accounting
     end
 
     def save
-      build_payment
+      return @payment if build_payment == :existing_payment
+
       @payment.errors.blank? && @payment.save
     end
 
@@ -42,7 +43,7 @@ module Accounting
       ##
       # Create Authorize.net createCustomerPaymentProfile Xml request
       # and get newly created payment profile
-      # 
+      #
       # @author Ming <ming@commercekitchen.com>
       #
       # @reference https://github.com/AuthorizeNet/sample-code-ruby/blob/master/CustomerProfiles/create-customer-payment-profile.rb
@@ -58,6 +59,31 @@ module Accounting
               default: @profile.payments.count == 0,
               last_four: response.validationDirectResponse.split(',')[50].to_s[-4..-1]
             )
+          elsif response.messages.messages[0].code == 'E00039' # Payment Profile exists
+            payment_profile_id = response.messages.messages[0].text.match(/[0-9]+/).to_s
+            actual_details = @payment.details(payment_profile_id)
+            payment = Payment.find_by(payment_profile_id: payment_profile_id)
+
+            # If payment profile details were found for the matching payment profile id,
+            # check and see if they match the configured accountable data.
+            # If so, it is safe to assume that the found duplicate payment profile id
+            # is in fact the accountable records profile, so we'll return the payment profile
+            if payment.present?
+              actual = [
+                actual_details&.payment&.creditCard&.cardNumber&.scan(/\d+/)&.first,
+                actual_details&.payment&.creditCard&.cardType,
+                actual_details&.customerProfileId
+              ]
+              configured = [:last_four, :title].map { |k| payment.public_send(k) }
+              configured << payment.profile&.profile_id
+
+              if actual == configured && payment
+                @payment = payment
+                return :existing_payment
+              end
+            end
+
+            @payment.errors.add(:base, 'A duplicate customer payment profile already exists')
           else
             error_msg = [response.messages.messages[0].code, response.messages.messages[0].text].join(' ')
             Accounting.log 'Payment', 'Accept', warn: "Failed to create a new customer payment profile - #{error_msg}"
@@ -73,7 +99,7 @@ module Accounting
         # Build the payment object
         payment_type = PaymentType.new
         payment_type.opaqueData = OpaqueDataType.new('COMMON.ACCEPT.INAPP.PAYMENT', @params[:opaqueData][:dataValue])
-        
+
         # Use the previously defined payment object to
         # build a payment profile to send with the request
         payment_profile = CustomerPaymentProfileType.new

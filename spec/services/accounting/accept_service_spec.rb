@@ -11,7 +11,7 @@ RSpec.describe Accounting::AcceptService do
       },
       card: {
         month: '11',
-        year: '2021',
+        year: '2059',
         address_attributes: {
           first_name: 'John',
           last_name: 'Stanfield',

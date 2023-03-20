@@ -49,10 +49,12 @@ module Accounting
 
     delegate :accountable, to: :profile
 
-    def details
+    def details(ppid=payment_profile_id)
+      return nil if ppid.nil?
+
       request = GetCustomerPaymentProfileRequest.new
       request.customerProfileId = profile.profile_id
-      request.customerPaymentProfileId = payment_profile_id
+      request.customerPaymentProfileId = ppid
       request.unmaskExpirationDate = true
 
       @response ||= authnet(:api).get_customer_payment_profile(request)
