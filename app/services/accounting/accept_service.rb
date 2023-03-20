@@ -61,7 +61,7 @@ module Accounting
             )
           elsif response.messages.messages[0].code == 'E00039' # Payment Profile exists
             payment_profile_id = response.messages.messages[0].text.match(/[0-9]+/).to_s
-            actual_details = @payment.details(payment_profile_id)
+            payment_profile = @payment.details(payment_profile_id)
             payment = Payment.find_by(payment_profile_id: payment_profile_id)
 
             # If payment profile details were found for the matching payment profile id,
@@ -70,14 +70,14 @@ module Accounting
             # is in fact the accountable records profile, so we'll return the payment profile
             if payment.present?
               actual = [
-                actual_details&.payment&.creditCard&.cardNumber&.scan(/\d+/)&.first,
-                actual_details&.payment&.creditCard&.cardType,
-                actual_details&.customerProfileId
+                payment_profile&.payment&.creditCard&.cardNumber&.scan(/\d+/)&.first,
+                payment_profile&.payment&.creditCard&.cardType,
+                payment_profile&.customerProfileId
               ]
               configured = [:last_four, :title].map { |k| payment.public_send(k) }
-              configured << payment.profile&.profile_id
+              configured << payment.profile&.profile_id&.to_s
 
-              if actual == configured && payment
+              if actual == configured
                 @payment = payment
                 return :existing_payment
               end
